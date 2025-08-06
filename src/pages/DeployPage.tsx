@@ -282,6 +282,15 @@ export const DeployPage: React.FC = () => {
     }
   };
 
+  const navigateToBridge = () => {
+    const params = new URLSearchParams({
+      erc20TokenHomeAddress: deployState.erc20TokenHome.address,
+      erc20TokenRemoteAddress: deployState.erc20TokenRemote.address,
+      mockERC20Address: deployState.mockERC20.address
+    });
+    window.location.href = `/bridge?${params.toString()}`;
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
@@ -458,15 +467,15 @@ export const DeployPage: React.FC = () => {
                 Home Contract: <span className="font-mono">{deployState.erc20TokenHome.address}</span>
               </div>
               <button
-                onClick={deployErc20TokenRemote}
-                disabled={deployState.erc20TokenRemote.isDeployed || deployState.erc20TokenRemote.isDeploying}
-                className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                onClick={() => deployErc20TokenRemote()}
+                disabled={!veWorld.isConnected || deployState.erc20TokenRemote.isDeploying || !deployState.erc20TokenHome.address || !wmbGatewayAddressRemote}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 disabled:bg-gray-400"
               >
                 {deployState.erc20TokenRemote.isDeploying ? (
-                  <>
-                    <ArrowPathIcon className="w-5 h-5 mr-2 animate-spin" />
+                  <div className="flex items-center justify-center">
+                    <ArrowPathIcon className="w-4 h-4 animate-spin mr-2" />
                     Deploying...
-                  </>
+                  </div>
                 ) : (
                   'Deploy Erc20TokenRemote'
                 )}
@@ -481,6 +490,21 @@ export const DeployPage: React.FC = () => {
                     className="text-indigo-600 hover:text-indigo-800"
                   >
                     <DocumentDuplicateIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Go To Bridge Button - shown after successful deployment */}
+              {deployState.erc20TokenRemote.isDeployed && deployState.erc20TokenHome.isDeployed && (
+                <div className="mt-4">
+                  <button
+                    onClick={navigateToBridge}
+                    className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4 4-6-6" />
+                    </svg>
+                    Go To Bridge
                   </button>
                 </div>
               )}

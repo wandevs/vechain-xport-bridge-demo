@@ -40,11 +40,27 @@ export const BridgePage: React.FC = () => {
   const [messageFee, setMessageFee] = useState('0');
   const [isApproved, setIsApproved] = useState(false);
 
-  // Load saved addresses from localStorage
+  // Load addresses from URL parameters or localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('contractAddresses');
-    if (saved) {
-      setContractAddresses(JSON.parse(saved));
+    const urlParams = new URLSearchParams(window.location.search);
+    const erc20TokenHomeFromUrl = urlParams.get('erc20TokenHomeAddress');
+    const erc20TokenRemoteFromUrl = urlParams.get('erc20TokenRemoteAddress');
+    const mockERC20FromUrl = urlParams.get('mockERC20Address');
+    
+    // If URL parameters exist, use them
+    if (erc20TokenHomeFromUrl || erc20TokenRemoteFromUrl || mockERC20FromUrl) {
+      setContractAddresses(prev => ({
+        ...prev,
+        erc20TokenHome: erc20TokenHomeFromUrl || prev.erc20TokenHome,
+        erc20TokenRemote: erc20TokenRemoteFromUrl || prev.erc20TokenRemote,
+        mockERC20: mockERC20FromUrl || prev.mockERC20
+      }));
+    } else {
+      // Fallback to localStorage
+      const saved = localStorage.getItem('contractAddresses');
+      if (saved) {
+        setContractAddresses(JSON.parse(saved));
+      }
     }
   }, []);
 
