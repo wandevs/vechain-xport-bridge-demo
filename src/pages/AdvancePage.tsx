@@ -6,29 +6,10 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
+import wmbGatewayJson from '../ABIs/WmbGateway.abi.json';
+
 // WMB Gateway ABI
-const WMB_GATEWAY_ABI = [
-  "function chainId() view returns (uint256)",
-  "function estimateFee(uint256 targetChainId, uint256 gasLimit) view returns (uint256)",
-  "function baseFees(uint256 chainId) view returns (uint256)",
-  "function defaultGasLimit() view returns (uint256)",
-  "function minGasLimit() view returns (uint256)",
-  "function maxGasLimit() view returns (uint256)",
-  "function maxMessageLength() view returns (uint256)",
-  "function signatureVerifier() view returns (address)",
-  "function wanchainStoremanAdminSC() view returns (address)",
-  "function supportedDstChains(uint256 chainId) view returns (bool)",
-  "function hasRole(bytes32 role, address account) view returns (bool)",
-  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
-  
-  "function setGasLimit(uint256 _maxGasLimit, uint256 _minGasLimit, uint256 _defaultGasLimit)",
-  "function setMaxMessageLength(uint256 _maxMessageLength)",
-  "function setSignatureVerifier(address _signatureVerifier)",
-  "function setSupportedDstChains(uint256[] targetChainIds, bool[] supported)",
-  "function batchSetBaseFees(uint256[] _targetChainIds, uint256[] _baseFees)",
-  "function withdrawFee(address payable _to)",
-  "function initialize(address admin, address _cross)"
-];
+const WMB_GATEWAY_ABI = wmbGatewayJson;
 
 interface WmbGatewayState {
   chainId: string;
@@ -119,7 +100,7 @@ export const AdvancePage: React.FC = () => {
       const isAdmin = activeAddress ? await contract.hasRole(adminRole, activeAddress) : false;
 
       // Fetch base fees for common chain IDs
-      const chainIds = [11155111, 2147483708]; // Sepolia and Sepolia BIP44 chain ID
+      const chainIds = [2147484466, 2147483708, 2153201998]; // Sepolia and Sepolia BIP44 chain ID
       const baseFees: Record<number, string> = {};
       const supportedChains: Record<number, boolean> = {};
 
@@ -127,7 +108,10 @@ export const AdvancePage: React.FC = () => {
         try {
           const fee = await contract.baseFees(id);
           const supported = await contract.supportedDstChains(id);
-          baseFees[id] = ethers.formatEther(fee);
+          console.log(`Raw base fee for chain ${id}:`, fee.toString());
+          console.log(`Formatted base fee for chain ${id}:`, ethers.formatUnits(fee, 'gwei'));
+          console.log(`Supported status for chain ${id}:`, supported);
+          baseFees[id] = ethers.formatUnits(fee, 'gwei');
           supportedChains[id] = supported;
         } catch (error) {
           console.warn(`Failed to fetch data for chain ${id}:`, error);
@@ -185,14 +169,32 @@ export const AdvancePage: React.FC = () => {
 
   const setGasLimits = () => {
     if (!wmbGatewayAddress || !activeSigner) return;
+    
+    // Validate inputs
+    const maxGas = parseInt(newGasLimits.maxGasLimit);
+    const minGas = parseInt(newGasLimits.minGasLimit);
+    const defaultGas = parseInt(newGasLimits.defaultGasLimit);
+    
+    if (isNaN(maxGas) || isNaN(minGas) || isNaN(defaultGas)) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter valid gas limit values' });
+      return;
+    }
 
     const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
+    const data = contract.interface.encodeFunctionData('setGasLimits', [
+      BigInt(maxGas),
+      BigInt(minGas),
+      BigInt(defaultGas)
+    ]);
+    
     return handleTransaction(
-      () => contract.setGasLimits(
-        BigInt(newGasLimits.maxGasLimit),
-        BigInt(newGasLimits.minGasLimit),
-        BigInt(newGasLimits.defaultGasLimit)
-      ),
+      () => activeSigner.sendTransaction({
+        clauses: [{
+          to: wmbGatewayAddress,
+          value: '0x0',
+          data: data
+        }]
+      }),
       'Gas limits updated successfully'
     );
   };
@@ -200,19 +202,46 @@ export const AdvancePage: React.FC = () => {
   const setMessageLength = () => {
     if (!wmbGatewayAddress || !activeSigner) return;
 
+    const length = parseInt(newMaxMessageLength);
+    if (isNaN(length) || length <= 0) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter a valid message length' });
+      return;
+    }
+
     const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
+    const data = contract.interface.encodeFunctionData('setMaxMessageLength', [BigInt(length)]);
+    
     return handleTransaction(
-      () => contract.setMaxMessageLength(BigInt(newMaxMessageLength)),
+      () => activeSigner.sendTransaction({
+        clauses: [{
+          to: wmbGatewayAddress,
+          value: '0x0',
+          data: data
+        }]
+      }),
       'Max message length updated successfully'
     );
   };
 
   const setSignatureVerifierAddress = () => {
-    if (!wmbGatewayAddress || !activeSigner || !newSignatureVerifier) return;
+    if (!wmbGatewayAddress || !activeSigner) return;
+
+    if (!newSignatureVerifier || !ethers.isAddress(newSignatureVerifier)) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter a valid Ethereum address' });
+      return;
+    }
 
     const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
+    const data = contract.interface.encodeFunctionData('setSignatureVerifier', [newSignatureVerifier]);
+    
     return handleTransaction(
-      () => contract.setSignatureVerifier(newSignatureVerifier),
+      () => activeSigner.sendTransaction({
+        clauses: [{
+          to: wmbGatewayAddress,
+          value: '0x0',
+          data: data
+        }]
+      }),
       'Signature verifier updated successfully'
     );
   };
@@ -220,23 +249,62 @@ export const AdvancePage: React.FC = () => {
   const setChainSupport = () => {
     if (!wmbGatewayAddress || !activeSigner) return;
 
+    const chainId = parseInt(chainIdToSupport);
+    if (isNaN(chainId) || chainId <= 0) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter a valid chain ID' });
+      return;
+    }
+
     const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
+    const data = contract.interface.encodeFunctionData('setSupportedDstChains', [
+      [BigInt(chainId)], 
+      [isSupported]
+    ]);
+    
     return handleTransaction(
-      () => contract.setSupportedDstChains([BigInt(chainIdToSupport)], [isSupported]),
-      `Chain ${chainIdToSupport} support updated`
+      () => activeSigner.sendTransaction({
+        clauses: [{
+          to: wmbGatewayAddress,
+          value: '0x0',
+          data: data
+        }]
+      }),
+      `Chain ${chainId} support updated`
     );
   };
 
   const setBaseFee = () => {
     if (!wmbGatewayAddress || !activeSigner || !baseFees) return;
 
-    const [chainId, fee] = baseFees.split(',');
-    if (!chainId || !fee) return;
+    const [chainIdStr, feeStr] = baseFees.split(',');
+    if (!chainIdStr || !feeStr) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter chain ID and fee in format: chainId,fee' });
+      return;
+    }
+
+    const chainId = parseInt(chainIdStr.trim());
+    const fee = parseFloat(feeStr.trim());
+    
+    if (isNaN(chainId) || isNaN(fee) || fee < 0) {
+      setTransaction({ hash: '', status: 'error', message: 'Please enter valid chain ID and fee amount' });
+      return;
+    }
 
     const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
+    const data = contract.interface.encodeFunctionData('batchSetBaseFees', [
+      [BigInt(chainId)], 
+      [ethers.parseUnits(fee.toString(), 'gwei')]
+    ]);
+    
     return handleTransaction(
-      () => contract.batchSetBaseFees([BigInt(chainId.trim())], [ethers.parseEther(fee.trim())]),
-      `Base fee for chain ${chainId} updated to ${fee} ETH`
+      () => activeSigner.sendTransaction({
+        clauses: [{
+          to: wmbGatewayAddress,
+          value: '0x0',
+          data: data
+        }]
+      }),
+      `Base fee for chain ${chainId} updated to ${fee} gwei`
     );
   };
 
@@ -324,7 +392,7 @@ export const AdvancePage: React.FC = () => {
               <div className="space-y-2 text-sm">
                 {Object.entries(gatewayState.baseFees).map(([chainId, fee]) => (
                   <div key={chainId}>
-                    Chain {chainId}: {fee} ETH
+                    Chain {chainId}: {fee} gwei
                     {gatewayState.supportedDstChains[Number(chainId)] ? ' ✅' : ' ❌'}
                   </div>
                 ))}
