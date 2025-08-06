@@ -51,7 +51,7 @@ interface TransactionResult {
 }
 
 export const AdvancePage: React.FC = () => {
-  const { address, signer } = useWallet();
+  const { veWorld, metaMask } = useWallet();
   const [wmbGatewayAddress, setWmbGatewayAddress] = useState('');
   const [gatewayState, setGatewayState] = useState<WmbGatewayState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -78,19 +78,22 @@ export const AdvancePage: React.FC = () => {
     }
   }, []);
 
+  const activeAddress = metaMask.address || veWorld.address;
+  const activeSigner = metaMask.signer || veWorld.signer;
+
   // Fetch gateway state
   useEffect(() => {
-    if (wmbGatewayAddress && signer) {
+    if (wmbGatewayAddress && activeSigner) {
       fetchGatewayState();
     }
-  }, [wmbGatewayAddress, signer, address]);
+  }, [wmbGatewayAddress, activeSigner, activeAddress]);
 
   const fetchGatewayState = async () => {
-    if (!wmbGatewayAddress || !signer) return;
+    if (!wmbGatewayAddress || !activeSigner) return;
 
     setIsLoading(true);
     try {
-      const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+      const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
       
       const [
         chainId,
@@ -113,10 +116,10 @@ export const AdvancePage: React.FC = () => {
       ]);
 
       // Check if current address is admin
-      const isAdmin = address ? await contract.hasRole(adminRole, address) : false;
+      const isAdmin = activeAddress ? await contract.hasRole(adminRole, activeAddress) : false;
 
       // Fetch base fees for common chain IDs
-      const chainIds = [11155111, 2147483708]; // Sepolia and VeChain Testnet
+      const chainIds = [11155111, 2147483708]; // Sepolia and Sepolia BIP44 chain ID
       const baseFees: Record<number, string> = {};
       const supportedChains: Record<number, boolean> = {};
 
@@ -155,7 +158,7 @@ export const AdvancePage: React.FC = () => {
   };
 
   const handleTransaction = async (txFunction: () => Promise<any>, successMessage: string) => {
-    if (!signer || !address) return;
+    if (!activeSigner || !activeAddress) return;
 
     setTransaction({ hash: '', status: 'pending', message: 'Transaction submitted...' });
 
@@ -181,9 +184,9 @@ export const AdvancePage: React.FC = () => {
   };
 
   const setGasLimits = () => {
-    if (!wmbGatewayAddress || !signer) return;
+    if (!wmbGatewayAddress || !activeSigner) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.setGasLimits(
         BigInt(newGasLimits.maxGasLimit),
@@ -195,9 +198,9 @@ export const AdvancePage: React.FC = () => {
   };
 
   const setMessageLength = () => {
-    if (!wmbGatewayAddress || !signer) return;
+    if (!wmbGatewayAddress || !activeSigner) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.setMaxMessageLength(BigInt(newMaxMessageLength)),
       'Max message length updated successfully'
@@ -205,9 +208,9 @@ export const AdvancePage: React.FC = () => {
   };
 
   const setSignatureVerifierAddress = () => {
-    if (!wmbGatewayAddress || !signer || !newSignatureVerifier) return;
+    if (!wmbGatewayAddress || !activeSigner || !newSignatureVerifier) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.setSignatureVerifier(newSignatureVerifier),
       'Signature verifier updated successfully'
@@ -215,9 +218,9 @@ export const AdvancePage: React.FC = () => {
   };
 
   const setChainSupport = () => {
-    if (!wmbGatewayAddress || !signer) return;
+    if (!wmbGatewayAddress || !activeSigner) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.setSupportedDstChains([BigInt(chainIdToSupport)], [isSupported]),
       `Chain ${chainIdToSupport} support updated`
@@ -225,12 +228,12 @@ export const AdvancePage: React.FC = () => {
   };
 
   const setBaseFee = () => {
-    if (!wmbGatewayAddress || !signer || !baseFees) return;
+    if (!wmbGatewayAddress || !activeSigner || !baseFees) return;
 
     const [chainId, fee] = baseFees.split(',');
     if (!chainId || !fee) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.batchSetBaseFees([BigInt(chainId.trim())], [ethers.parseEther(fee.trim())]),
       `Base fee for chain ${chainId} updated to ${fee} ETH`
@@ -238,9 +241,9 @@ export const AdvancePage: React.FC = () => {
   };
 
   const withdrawFees = () => {
-    if (!wmbGatewayAddress || !signer || !withdrawAddress) return;
+    if (!wmbGatewayAddress || !activeSigner || !withdrawAddress) return;
 
-    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, signer);
+    const contract = new ethers.Contract(wmbGatewayAddress, WMB_GATEWAY_ABI, activeSigner);
     return handleTransaction(
       () => contract.withdrawFee(withdrawAddress),
       'Fees withdrawn successfully'
@@ -267,7 +270,7 @@ export const AdvancePage: React.FC = () => {
         </div>
 
         {/* Connection Status */}
-        {address && (
+        {activeAddress && (
           <div className={`p-3 rounded-md mb-4 ${
             gatewayState?.isAdmin 
               ? 'bg-green-50 text-green-800' 

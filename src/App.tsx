@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { WalletProvider, useWallet } from './contexts/WalletContext';
 import { DeployPage } from './pages/DeployPage';
@@ -7,8 +6,7 @@ import { AdvancePage } from './pages/AdvancePage';
 import { 
   HomeIcon, 
   ArrowPathIcon, 
-  Cog6ToothIcon,
-  WalletIcon
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 
 function App() {
@@ -48,9 +46,9 @@ function App() {
                     </Link>
                   </div>
                   
-                  <div className="flex items-center">
-                    <WalletIcon className="w-5 h-5 text-gray-400 mr-2" />
-                    <WalletButton />
+                  <div className="flex items-center space-x-4">
+                    <VeWorldButton />
+                    <MetaMaskButton />
                   </div>
                 </div>
               </div>
@@ -70,70 +68,67 @@ function App() {
   );
 }
 
-// Real wallet button component
-function WalletButton() {
-  const { address, connectVeWorld, connectMetaMask, disconnectWallet, walletType } = useWallet();
-  const [showDropdown, setShowDropdown] = useState(false);
+// VeWorld Wallet Button
+function VeWorldButton() {
+  const { veWorld, connectVeWorld, disconnectVeWorld } = useWallet();
 
-  if (address) {
+  if (veWorld.isConnected) {
     return (
-      <div className="relative">
+      <div className="flex items-center space-x-2">
+        <span className="text-sm text-gray-600">VeWorld:</span>
         <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          onClick={disconnectVeWorld}
+          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
         >
-          {address.slice(0, 6)}...{address.slice(-4)} ({walletType})
+          {veWorld.address?.slice(0, 6)}...{veWorld.address?.slice(-4)}
         </button>
-        
-        {showDropdown && (
-          <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
-            <button
-              onClick={() => {
-                disconnectWallet();
-                setShowDropdown(false);
-              }}
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Disconnect
-            </button>
-          </div>
+      </div>
+    );
+  }
+  
+  return (
+    <button
+      onClick={connectVeWorld}
+      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+    >
+      Connect VeWorld
+    </button>
+  );
+}
+
+// MetaMask Wallet Button
+function MetaMaskButton() {
+  const { metaMask, connectMetaMask, disconnectMetaMask, switchMetaMaskChain } = useWallet();
+
+  if (metaMask.isConnected) {
+    return (
+      <div className="flex items-center space-x-2">
+        <span className="text-sm text-gray-600">MetaMask:</span>
+        <button
+          onClick={disconnectMetaMask}
+          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700"
+        >
+          {metaMask.address?.slice(0, 6)}...{metaMask.address?.slice(-4)}
+        </button>
+        {metaMask.chainId !== 11155111 && (
+          <button
+            onClick={() => switchMetaMaskChain(11155111)}
+            className="text-xs px-2 py-1 bg-yellow-500 text-white rounded"
+          >
+            Switch to Sepolia
+          </button>
         )}
       </div>
     );
   }
   
   return (
-    <div className="relative">
-      <button
-        onClick={() => setShowDropdown(!showDropdown)}
-        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-      >
-        Connect Wallet
-      </button>
-      
-      {showDropdown && (
-        <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
-          <button
-            onClick={() => {
-              connectMetaMask();
-              setShowDropdown(false);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-          >
-            Connect MetaMask
-          </button>
-          <button
-            onClick={() => {
-              connectVeWorld();
-              setShowDropdown(false);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-          >
-            Connect VeWorld
-          </button>
-        </div>
-      )}
-    </div>
+    <button
+      onClick={connectMetaMask}
+      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700"
+    >
+      Connect MetaMask
+    </button>
   );
 }
 

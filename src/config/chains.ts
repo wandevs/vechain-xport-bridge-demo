@@ -1,7 +1,8 @@
 import { ChainConfig } from '../types/contracts';
 
 export const SEPOLIA_CHAIN_ID = 11155111;
-export const VECHAIN_TESTNET_CHAIN_ID = 2147483708;
+export const VECHAIN_TESTNET_CHAIN_ID = 2147483708; // VeChain testnet BIP44 chain ID for cross-chain messaging
+export const SEPOLIA_BIP44_CHAIN_ID = 2147483708; // BIP44 chain ID for Sepolia used in cross-chain messaging
 
 export const chainConfigs: Record<number, ChainConfig> = {
   [SEPOLIA_CHAIN_ID]: {
@@ -12,14 +13,6 @@ export const chainConfigs: Record<number, ChainConfig> = {
     symbol: 'ETH',
     explorer: 'https://sepolia.etherscan.io',
   },
-  [VECHAIN_TESTNET_CHAIN_ID]: {
-    id: VECHAIN_TESTNET_CHAIN_ID,
-    name: 'VeChain Testnet',
-    rpcUrl: 'https://testnet.rpc.vechain.org',
-    chainId: VECHAIN_TESTNET_CHAIN_ID,
-    symbol: 'VET',
-    explorer: 'https://explore-testnet.vechain.org',
-  }
 };
 
 export const CONTRACT_ADDRESSES = {

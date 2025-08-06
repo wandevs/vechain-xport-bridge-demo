@@ -8,24 +8,14 @@ import {
   ArrowDownIcon
 } from '@heroicons/react/24/outline';
 
-// Contract ABIs
-const ERC20_ABI = [
-  "function balanceOf(address account) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)"
-];
+// Contract ABIs and Bytecodes
+import mockErc20Json from '../ABIs/MockErc20.json';
+import erc20TokenHomeJson from '../ABIs/Erc20TokenHome.json';
+import erc20TokenRemoteJson from '../ABIs/Erc20TokenRemote.json';
 
-const ERC20_TOKEN_HOME_ABI = [
-  "function crossTo(address toUser, uint256 amount) payable",
-  "function token() view returns (address)",
-  "function estimateFee(uint256 remoteChainId, uint256 gasLimit) view returns (uint256)"
-];
-
-const ERC20_TOKEN_REMOTE_ABI = [
-  "function crossBack(address toUser, uint256 amount) payable",
-  "function balanceOf(address account) view returns (uint256)",
-  "function estimateFee(uint256 remoteChainId, uint256 gasLimit) view returns (uint256)"
-];
+const ERC20_ABI = mockErc20Json.abi;
+const ERC20_TOKEN_HOME_ABI = erc20TokenHomeJson.abi;
+const ERC20_TOKEN_REMOTE_ABI = erc20TokenRemoteJson.abi;
 
 interface TokenBalances {
   sepolia: string;
@@ -33,7 +23,7 @@ interface TokenBalances {
 }
 
 export const BridgePage: React.FC = () => {
-  const { address, walletType, provider, signer } = useWallet();
+  const { veWorld, metaMask } = useWallet();
   const [contractAddresses, setContractAddresses] = useState({
     erc20TokenHome: '',
     erc20TokenRemote: '',
@@ -58,12 +48,16 @@ export const BridgePage: React.FC = () => {
     }
   }, []);
 
+  const activeAddress = metaMask.address || veWorld.address;
+  const activeProvider = metaMask.provider || veWorld.signer || null;
+  const activeSigner = metaMask.signer || veWorld.signer || null;
+
   // Update balances when addresses or account changes
   useEffect(() => {
-    if (address && contractAddresses.mockERC20 && contractAddresses.erc20TokenRemote) {
+    if (activeAddress && contractAddresses.mockERC20 && contractAddresses.erc20TokenRemote) {
       fetchBalances();
     }
-  }, [address, contractAddresses, walletType]);
+  }, [activeAddress, contractAddresses, metaMask.isConnected, veWorld.isConnected]);
 
   // Estimate message fee
   useEffect(() => {
@@ -75,16 +69,16 @@ export const BridgePage: React.FC = () => {
   const fetchBalances = async () => {
     try {
       // Sepolia balance (MockERC20)
-      if (contractAddresses.mockERC20 && provider) {
-        const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, provider);
-        const sepoliaBalance = await tokenContract.balanceOf(address);
+      if (contractAddresses.mockERC20 && activeProvider) {
+        const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, activeProvider);
+        const sepoliaBalance = await tokenContract.balanceOf(activeAddress);
         setBalances(prev => ({ ...prev, sepolia: ethers.formatEther(sepoliaBalance) }));
       }
 
       // VeChain balance (Erc20TokenRemote)
-      if (contractAddresses.erc20TokenRemote && provider) {
-        const remoteContract = new ethers.Contract(contractAddresses.erc20TokenRemote, ERC20_TOKEN_REMOTE_ABI, provider);
-        const vechainBalance = await remoteContract.balanceOf(address);
+      if (contractAddresses.erc20TokenRemote && activeProvider) {
+        const remoteContract = new ethers.Contract(contractAddresses.erc20TokenRemote, ERC20_TOKEN_REMOTE_ABI, activeProvider);
+        const vechainBalance = await remoteContract.balanceOf(activeAddress);
         setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
       }
     } catch (error) {
@@ -94,12 +88,12 @@ export const BridgePage: React.FC = () => {
 
   const estimateMessageFee = async () => {
     try {
-      if (!contractAddresses.wmbGateway || !signer) return;
+      if (!contractAddresses.wmbGateway || !activeSigner) return;
 
       const wmbGateway = new ethers.Contract(
         contractAddresses.wmbGateway,
         ["function estimateFee(uint256 targetChainId, uint256 gasLimit) view returns (uint256)"],
-        signer
+        activeSigner
       );
 
       const targetChainId = direction === 'sepolia-to-vechain' ? VECHAIN_TESTNET_CHAIN_ID : SEPOLIA_CHAIN_ID;
@@ -112,11 +106,11 @@ export const BridgePage: React.FC = () => {
   };
 
   const checkApproval = async () => {
-    if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !signer) return;
+    if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !activeSigner) return;
 
     try {
-      const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, signer);
-      const allowance = await tokenContract.allowance(address, contractAddresses.erc20TokenHome);
+      const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, activeSigner);
+      const allowance = await tokenContract.allowance(activeAddress, contractAddresses.erc20TokenHome);
       const amountWei = ethers.parseEther(amount);
       setIsApproved(allowance >= amountWei);
     } catch (error) {
@@ -126,10 +120,10 @@ export const BridgePage: React.FC = () => {
   };
 
   const approveTokens = async () => {
-    if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !signer) return;
+    if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !activeSigner) return;
 
     try {
-      const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, signer);
+      const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, activeSigner);
       const amountWei = ethers.parseEther(amount);
       const tx = await tokenContract.approve(contractAddresses.erc20TokenHome, amountWei);
       await tx.wait();
@@ -141,7 +135,7 @@ export const BridgePage: React.FC = () => {
   };
 
   const bridgeTokens = async () => {
-    if (!amount || !signer || !address) return;
+    if (!amount || !activeSigner || !activeAddress) return;
 
     setIsBridging(true);
 
@@ -151,7 +145,7 @@ export const BridgePage: React.FC = () => {
 
       if (direction === 'sepolia-to-vechain') {
         // From Sepolia to VeChain
-        if (walletType !== 'metamask') {
+        if (!metaMask.isConnected) {
           alert('Please connect MetaMask for Sepolia transactions');
           return;
         }
@@ -159,15 +153,15 @@ export const BridgePage: React.FC = () => {
         const tokenHome = new ethers.Contract(
           contractAddresses.erc20TokenHome,
           ERC20_TOKEN_HOME_ABI,
-          signer
+          metaMask.signer
         );
 
-        const tx = await tokenHome.crossTo(address, amountWei, { value: feeWei });
+        const tx = await tokenHome.crossTo(metaMask.address, amountWei, { value: feeWei });
         await tx.wait();
         alert('Successfully bridged tokens to VeChain!');
       } else {
         // From VeChain to Sepolia
-        if (walletType !== 'veworld') {
+        if (!veWorld.isConnected) {
           alert('Please connect VeWorld for VeChain transactions');
           return;
         }
@@ -175,10 +169,10 @@ export const BridgePage: React.FC = () => {
         const tokenRemote = new ethers.Contract(
           contractAddresses.erc20TokenRemote,
           ERC20_TOKEN_REMOTE_ABI,
-          signer
+          veWorld.signer
         );
 
-        const tx = await tokenRemote.crossBack(address, amountWei, { value: feeWei });
+        const tx = await tokenRemote.crossBack(veWorld.address, amountWei, { value: feeWei });
         await tx.wait();
         alert('Successfully bridged tokens to Sepolia!');
       }
@@ -342,8 +336,8 @@ export const BridgePage: React.FC = () => {
           <button
             onClick={bridgeTokens}
             disabled={!amount || isBridging || 
-              (direction === 'sepolia-to-vechain' && walletType !== 'metamask') ||
-              (direction === 'vechain-to-sepolia' && walletType !== 'veworld') ||
+              (direction === 'sepolia-to-vechain' && !metaMask.isConnected) ||
+              (direction === 'vechain-to-sepolia' && !veWorld.isConnected) ||
               (direction === 'sepolia-to-vechain' && !isApproved)
             }
             className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
@@ -370,8 +364,8 @@ export const BridgePage: React.FC = () => {
         <div className="mt-6 p-4 bg-gray-50 rounded-lg">
           <h4 className="text-sm font-medium text-gray-700 mb-2">Connection Status</h4>
           <div className="text-sm text-gray-600">
-            <p>Current Wallet: {walletType || 'Not connected'}</p>
-            <p>Address: {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not connected'}</p>
+            <p>MetaMask: {metaMask.isConnected ? `${metaMask.address?.slice(0, 6)}...${metaMask.address?.slice(-4)}` : 'Not connected'}</p>
+            <p>VeWorld: {veWorld.isConnected ? `${veWorld.address?.slice(0, 6)}...${veWorld.address?.slice(-4)}` : 'Not connected'}</p>
             <p>Required for Sepolia: MetaMask</p>
             <p>Required for VeChain: VeWorld</p>
           </div>

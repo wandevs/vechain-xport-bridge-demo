@@ -1,23 +1,33 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ethers } from 'ethers';
 import { useWallet as useVeWorldWallet, useWalletModal } from '@vechain/dapp-kit-react';
-import { SEPOLIA_CHAIN_ID, VECHAIN_TESTNET_CHAIN_ID } from '../config/chains';
 
 export interface WalletState {
-  address: string | null;
-  isConnected: boolean;
-  chainId: number | null;
-  provider: ethers.Provider | null;
-  signer: any | null;
-  walletType: 'veworld' | 'metamask' | null;
+  veWorld: {
+    address: string | null;
+    isConnected: boolean;
+    chainId: number | null;
+    signer: any | null;
+  };
+  metaMask: {
+    address: string | null;
+    isConnected: boolean;
+    chainId: number | null;
+    provider: ethers.BrowserProvider | null;
+    signer: ethers.Signer | null;
+  };
 }
 
-interface WalletContextType extends WalletState {
+interface WalletContextType {
+  veWorld: WalletState['veWorld'];
+  metaMask: WalletState['metaMask'];
   connectVeWorld: () => Promise<void>;
   connectMetaMask: () => Promise<void>;
-  disconnectWallet: () => void;
-  switchChain: (chainId: number) => Promise<void>;
-  sendTransaction: (tx: any) => Promise<string>;
+  disconnectVeWorld: () => void;
+  disconnectMetaMask: () => void;
+  switchMetaMaskChain: (chainId: number) => Promise<void>;
+  sendVeWorldTransaction: (tx: any) => Promise<string>;
+  sendMetaMaskTransaction: (tx: any) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -36,12 +46,19 @@ interface WalletProviderProps {
 
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [walletState, setWalletState] = useState<WalletState>({
-    address: null,
-    isConnected: false,
-    chainId: null,
-    provider: null,
-    signer: null,
-    walletType: null,
+    veWorld: {
+      address: null,
+      isConnected: false,
+      chainId: null,
+      signer: null,
+    },
+    metaMask: {
+      address: null,
+      isConnected: false,
+      chainId: null,
+      provider: null,
+      signer: null,
+    },
   });
 
   // VeChain hooks
@@ -54,14 +71,25 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   // Auto-detect VeWorld connection
   useEffect(() => {
     if (veWorldAccount && veWorldSigner) {
-      setWalletState({
-        address: veWorldAccount,
-        isConnected: true,
-        chainId: VECHAIN_TESTNET_CHAIN_ID,
-        provider: null, // VeChain uses its own provider
-        signer: veWorldSigner,
-        walletType: 'veworld',
-      });
+      setWalletState(prev => ({
+        ...prev,
+        veWorld: {
+          address: veWorldAccount,
+          isConnected: true,
+          chainId: 2147483708, // VeChain testnet BIP44 chain ID
+          signer: veWorldSigner,
+        }
+      }));
+    } else {
+      setWalletState(prev => ({
+        ...prev,
+        veWorld: {
+          address: null,
+          isConnected: false,
+          chainId: null,
+          signer: null,
+        }
+      }));
     }
   }, [veWorldAccount, veWorldSigner]);
 
@@ -83,25 +111,40 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const accounts = await provider.send('eth_requestAccounts', []);
       const network = await provider.getNetwork();
+      const signer = await provider.getSigner();
 
       setMetaMaskProvider(provider);
-      setWalletState({
-        address: accounts[0],
-        isConnected: true,
-        chainId: Number(network.chainId),
-        provider,
-        signer: await provider.getSigner(),
-        walletType: 'metamask',
-      });
+      setWalletState(prev => ({
+        ...prev,
+        metaMask: {
+          address: accounts[0],
+          isConnected: true,
+          chainId: Number(network.chainId),
+          provider,
+          signer,
+        }
+      }));
 
       // Listen for account changes
       (window as any).ethereum.on('accountsChanged', (accounts: string[]) => {
         if (accounts.length === 0) {
-          disconnectWallet();
+          setWalletState(prev => ({
+            ...prev,
+            metaMask: {
+              address: null,
+              isConnected: false,
+              chainId: null,
+              provider: null,
+              signer: null,
+            }
+          }));
         } else {
           setWalletState(prev => ({
             ...prev,
-            address: accounts[0],
+            metaMask: {
+              ...prev.metaMask,
+              address: accounts[0],
+            }
           }));
         }
       });
@@ -110,7 +153,10 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       (window as any).ethereum.on('chainChanged', (chainId: string) => {
         setWalletState(prev => ({
           ...prev,
-          chainId: Number(chainId),
+          metaMask: {
+            ...prev.metaMask,
+            chainId: Number(chainId),
+          }
         }));
       });
 
@@ -120,84 +166,90 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
   };
 
-  const disconnectWallet = () => {
-    setWalletState({
-      address: null,
-      isConnected: false,
-      chainId: null,
-      provider: null,
-      signer: null,
-      walletType: null,
-    });
+  const disconnectVeWorld = () => {
+    // VeWorld doesn't have a disconnect method
+    // Connection is managed by the VeWorld extension itself
+  };
+
+  const disconnectMetaMask = () => {
+    setWalletState(prev => ({
+      ...prev,
+      metaMask: {
+        address: null,
+        isConnected: false,
+        chainId: null,
+        provider: null,
+        signer: null,
+      }
+    }));
     setMetaMaskProvider(null);
   };
 
-  const switchChain = async (chainId: number) => {
-    if (walletState.walletType === 'metamask' && (window as any).ethereum) {
-      try {
+  const switchMetaMaskChain = async (chainId: number) => {
+    if (!(window as any).ethereum) {
+      throw new Error('MetaMask is not installed');
+    }
+    
+    try {
+      await (window as any).ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: `0x${chainId.toString(16)}` }],
+      });
+    } catch (error: any) {
+      // Handle chain not added to MetaMask
+      if (error.code === 4902) {
         await (window as any).ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: `0x${chainId.toString(16)}` }],
-        });
-      } catch (error: any) {
-        // Handle chain not added to MetaMask
-        if (error.code === 4902) {
-          await (window as any).ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: `0x${chainId.toString(16)}`,
-                chainName: chainId === SEPOLIA_CHAIN_ID ? 'Sepolia' : 'VeChain Testnet',
-                rpcUrls: [
-                  chainId === SEPOLIA_CHAIN_ID 
-                    ? 'https://ethereum-sepolia-rpc.publicnode.com'
-                    : 'https://testnet.rpc.vechain.org'
-                ],
-                nativeCurrency: {
-                  name: chainId === SEPOLIA_CHAIN_ID ? 'ETH' : 'VET',
-                  symbol: chainId === SEPOLIA_CHAIN_ID ? 'ETH' : 'VET',
-                  decimals: 18,
-                },
-                blockExplorerUrls: [
-                  chainId === SEPOLIA_CHAIN_ID 
-                    ? 'https://sepolia.etherscan.io'
-                    : 'https://explore-testnet.vechain.org'
-                ],
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: `0x${chainId.toString(16)}`,
+              chainName: 'Sepolia Testnet',
+              rpcUrls: ['https://ethereum-sepolia-rpc.publicnode.com'],
+              nativeCurrency: {
+                name: 'ETH',
+                symbol: 'ETH',
+                decimals: 18,
               },
-            ],
-          });
-        } else {
-          throw error;
-        }
+              blockExplorerUrls: ['https://sepolia.etherscan.io'],
+            },
+          ],
+        });
+      } else {
+        throw error;
       }
     }
   };
 
-  const sendTransaction = async (tx: any): Promise<string> => {
-    if (!walletState.signer) {
-      throw new Error('No wallet connected');
+  const sendVeWorldTransaction = async (tx: any): Promise<string> => {
+    if (!walletState.veWorld.signer) {
+      throw new Error('VeWorld wallet not connected');
     }
+    
+    // VeChain transaction
+    const txResponse = await walletState.veWorld.signer.sendTransaction(tx);
+    return txResponse;
+  };
 
-    if (walletState.walletType === 'veworld') {
-      // VeChain transaction
-      const txResponse = await walletState.signer.sendTransaction(tx);
-      return txResponse;
-    } else if (walletState.walletType === 'metamask') {
-      // Ethereum transaction
-      const txResponse = await walletState.signer.sendTransaction(tx);
-      return txResponse.hash;
+  const sendMetaMaskTransaction = async (tx: any): Promise<string> => {
+    if (!walletState.metaMask.signer) {
+      throw new Error('MetaMask wallet not connected');
     }
-
-    throw new Error('Unsupported wallet type');
+    
+    // Ethereum transaction
+    const txResponse = await walletState.metaMask.signer.sendTransaction(tx);
+    return txResponse.hash;
   };
 
   const value: WalletContextType = {
-    ...walletState,
+    veWorld: walletState.veWorld,
+    metaMask: walletState.metaMask,
     connectVeWorld,
     connectMetaMask,
-    disconnectWallet,
-    switchChain,
-    sendTransaction,
+    disconnectVeWorld,
+    disconnectMetaMask,
+    switchMetaMaskChain,
+    sendVeWorldTransaction,
+    sendMetaMaskTransaction,
   };
 
   return (
