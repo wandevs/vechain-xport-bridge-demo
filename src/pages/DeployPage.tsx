@@ -162,7 +162,12 @@ export const DeployPage: React.FC = () => {
         factory.interface.encodeDeploy(constructorArgs).slice(2);
 
       // Send transaction using VeChain-compatible format with clauses
-      const txResponse = await veWorld.signer.sendTransaction({
+      console.log('Starting VeChain contract deployment...');
+      console.log('Fee:', fee.toString());
+      console.log('Deployment bytecode length:', deploymentBytecode.length);
+      
+      // Send transaction and get transaction hash
+      const txHash = await veWorld.signer.sendTransaction({
         clauses: [{
           to: null, // Contract deployment
           value: fee.toString(),
@@ -170,38 +175,101 @@ export const DeployPage: React.FC = () => {
         }]
       });
 
-      console.log('Transaction submitted:', txResponse);
+      console.log('=== VeChain Transaction Response ===');
+      console.log('Transaction hash received:', txHash);
       
       // Handle VeChain transaction response
       let contractAddress = null;
       
-      if (txResponse.hash) {
-        const txHash = txResponse.hash;
-        
-        // Show transaction hash to user
+      if (txHash) {
         console.log('Transaction hash:', txHash);
         
-        // For VeChain, we need to get the contract address from the user
-        // since the transaction format is different
-        alert(`Contract deployment transaction submitted successfully!\n\nTransaction Hash: ${txHash}\n\nPlease check this transaction on a VeChain explorer (e.g., https://explore-testnet.vechain.org/) to find the deployed contract address.\n\nThe contract address will be shown in the transaction details.`);
+        // For VeChain, we need to wait for transaction receipt using provider
+        console.log('Starting receipt polling for VeChain transaction...');
         
-        // Prompt user to enter the contract address from explorer
-        contractAddress = prompt('Enter the deployed contract address from VeChain explorer:', '');
+        try {
+          // Use direct RPC calls to VeChain testnet
+          let receipt = null;
+          let attempts = 0;
+          const maxAttempts = 15;
+          
+          while (attempts < maxAttempts && !receipt) {
+            try {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              console.log(`Attempt ${attempts + 1} to get receipt for ${txHash}...`);
+              
+              // Direct RPC call to VeChain testnet
+              const response = await fetch('https://testnet.rpc.vechain.org', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  method: 'eth_getTransactionReceipt',
+                  params: [txHash],
+                  id: 1
+                })
+              });
+              
+              const data = await response.json();
+              console.log('VeChain RPC response:', data);
+              
+              if (data.result) {
+                receipt = data.result;
+                console.log('✅ Transaction receipt found:', receipt);
+                break;
+              }
+              
+              attempts++;
+            } catch (error) {
+              console.log(`Error on attempt ${attempts + 1}:`, error);
+              attempts++;
+            }
+          }
+          
+          // Extract contract address from receipt
+          if (receipt && receipt.contractAddress) {
+            contractAddress = receipt.contractAddress;
+            console.log('✅ Contract address found:', contractAddress);
+          } else if (receipt) {
+            console.log('❌ No contract address in receipt:', receipt);
+          } else {
+            console.log('❌ No receipt found after polling');
+          }
+          
+        } catch (error) {
+          console.log('Error querying VeChain RPC:', error);
+        }
         
-        if (!contractAddress || !contractAddress.startsWith('0x') || contractAddress.length !== 42) {
-          throw new Error('Invalid contract address provided. Please provide a valid 42-character address starting with 0x.');
+        // If contract address not found, prompt user
+        if (!contractAddress) {
+          console.log('Prompting user for contract address...');
+          
+          alert(`Contract deployment transaction submitted successfully!\n\nTransaction Hash: ${txHash}\n\nPlease check this transaction on a VeChain explorer:\n🔗 https://explore-testnet.vechain.org/transactions/${txHash}\n\nThe contract address will be shown in the transaction details under 'Created Contract'.`);
+          
+          contractAddress = prompt('Enter the deployed contract address from VeChain explorer:', '');
+          
+          if (!contractAddress) {
+            throw new Error('User cancelled - no contract address provided');
+          }
         }
         
         // Validate the address format
-        if (!ethers.isAddress(contractAddress)) {
-          throw new Error('Invalid contract address format');
+        if (!contractAddress.startsWith('0x') || contractAddress.length !== 42) {
+          throw new Error('Invalid contract address format. Please provide a valid 42-character address starting with 0x.');
         }
         
-      } else if ((txResponse as any).contractAddress) {
-        // If the response already contains the contract address
-        contractAddress = (txResponse as any).contractAddress;
+        if (!ethers.isAddress(contractAddress)) {
+          throw new Error('Invalid contract address provided');
+        }
+        
+        console.log('✅ Final contract address:', contractAddress);
+        
       } else {
-        throw new Error('Could not determine contract address from transaction response');
+        console.error('❌ No transaction hash received');
+        throw new Error('No transaction hash received');
       }
 
       setDeployState(prev => ({
