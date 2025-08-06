@@ -45,8 +45,8 @@ export const DeployPage: React.FC = () => {
     erc20TokenHome: { address: '', isDeployed: false, isDeploying: false },
     erc20TokenRemote: { address: '', isDeployed: false, isDeploying: false },
   });
-  const [wmbGatewayAddressHome, setWmbGatewayAddressHome] = useState('');
-  const [wmbGatewayAddressRemote, setWmbGatewayAddressRemote] = useState('');
+  const [wmbGatewayAddressHome, setWmbGatewayAddressHome] = useState('0xDDddd58428706FEdD013b3A761c6E40723a7911d');
+  const [wmbGatewayAddressRemote, setWmbGatewayAddressRemote] = useState('0xa1Dd5cBF77e1E78C307ecbD7c6AEea90FC71499e');
   const [tokenName, setTokenName] = useState('CrossChainToken');
   const [tokenSymbol, setTokenSymbol] = useState('CCT');
   const [tokenAmount, setTokenAmount] = useState('1000');
@@ -141,26 +141,72 @@ export const DeployPage: React.FC = () => {
 
       const fee = await wmbGateway.estimateFee(2147483708, 400000); // Use BIP44 chain ID for Sepolia
 
+      // Create contract deployment transaction with VeChain-compatible format
       const factory = new ethers.ContractFactory(
         ERC20_TOKEN_REMOTE_ABI,
         ERC20_TOKEN_REMOTE_BYTECODE,
         veWorld.signer
       );
 
-      const contract = await factory.deploy(
+      // Encode constructor parameters
+      const constructorArgs = [
         wmbGatewayAddressRemote,
         deployState.erc20TokenHome.address,
         2147483708, // Use BIP44 chain ID for Sepolia
         tokenName,
-        tokenSymbol,
-        { value: fee }
-      );
-      await contract.waitForDeployment();
-      const address = await contract.getAddress();
+        tokenSymbol
+      ];
+      
+      // Create deployment bytecode
+      const deploymentBytecode = factory.bytecode + 
+        factory.interface.encodeDeploy(constructorArgs).slice(2);
+
+      // Send transaction using VeChain-compatible format with clauses
+      const txResponse = await veWorld.signer.sendTransaction({
+        clauses: [{
+          to: null, // Contract deployment
+          value: fee.toString(),
+          data: deploymentBytecode
+        }]
+      });
+
+      console.log('Transaction submitted:', txResponse);
+      
+      // Handle VeChain transaction response
+      let contractAddress = null;
+      
+      if (txResponse.hash) {
+        const txHash = txResponse.hash;
+        
+        // Show transaction hash to user
+        console.log('Transaction hash:', txHash);
+        
+        // For VeChain, we need to get the contract address from the user
+        // since the transaction format is different
+        alert(`Contract deployment transaction submitted successfully!\n\nTransaction Hash: ${txHash}\n\nPlease check this transaction on a VeChain explorer (e.g., https://explore-testnet.vechain.org/) to find the deployed contract address.\n\nThe contract address will be shown in the transaction details.`);
+        
+        // Prompt user to enter the contract address from explorer
+        contractAddress = prompt('Enter the deployed contract address from VeChain explorer:', '');
+        
+        if (!contractAddress || !contractAddress.startsWith('0x') || contractAddress.length !== 42) {
+          throw new Error('Invalid contract address provided. Please provide a valid 42-character address starting with 0x.');
+        }
+        
+        // Validate the address format
+        if (!ethers.isAddress(contractAddress)) {
+          throw new Error('Invalid contract address format');
+        }
+        
+      } else if ((txResponse as any).contractAddress) {
+        // If the response already contains the contract address
+        contractAddress = (txResponse as any).contractAddress;
+      } else {
+        throw new Error('Could not determine contract address from transaction response');
+      }
 
       setDeployState(prev => ({
         ...prev,
-        erc20TokenRemote: { address, isDeployed: true, isDeploying: false }
+        erc20TokenRemote: { address: contractAddress, isDeployed: true, isDeploying: false }
       }));
     } catch (error) {
       console.error('Failed to deploy Erc20TokenRemote:', error);
