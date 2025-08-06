@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from '../contexts/WalletContext';
-import { SEPOLIA_CHAIN_ID, VECHAIN_TESTNET_CHAIN_ID } from '../config/chains';
+
 import { 
   ArrowPathIcon, 
   ArrowUpIcon, 
@@ -38,6 +38,15 @@ export const BridgePage: React.FC = () => {
   const [isBridging, setIsBridging] = useState(false);
   const [messageFee, setMessageFee] = useState('0');
   const [isApproved, setIsApproved] = useState(false);
+  const [bridgeStatus, setBridgeStatus] = useState<{
+    txHash: string;
+    status: string;
+    fromChain: string;
+    toChain: string;
+    receiveTxHash: string;
+    timestamp: number;
+  } | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
   // Load addresses from URL parameters or localStorage
   useEffect(() => {
@@ -106,6 +115,30 @@ export const BridgePage: React.FC = () => {
   };
 
   // Removed wmbGateway fee estimation since gateway is already in contracts
+
+  const checkBridgeStatus = async (txHash: string) => {
+    setIsCheckingStatus(true);
+    try {
+      const response = await fetch(`https://bridge-api.wanchain.org/api/testnet/status/msg/${txHash}`);
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        const status = data[0];
+        setBridgeStatus({
+          txHash: status.sendTxHash,
+          status: status.status,
+          fromChain: status.fromChain,
+          toChain: status.toChain,
+          receiveTxHash: status.receiveTxHash,
+          timestamp: status.timestamp
+        });
+      }
+    } catch (error) {
+      console.error('Failed to check bridge status:', error);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const checkApproval = async () => {
     if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !activeSigner) return;
@@ -247,8 +280,6 @@ export const BridgePage: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
-
         </div>
 
         {/* Balance Display */}
@@ -318,7 +349,7 @@ export const BridgePage: React.FC = () => {
             <button
               onClick={approveTokens}
               disabled={!amount || isBridging}
-              className="w-full px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:opacity-50"
+              className="w-full bg-yellow-600 text-white py-2 px-4 rounded-md hover:bg-yellow-700 disabled:opacity-50"
             >
               Approve Tokens
             </button>
@@ -349,16 +380,57 @@ export const BridgePage: React.FC = () => {
               </>
             )}
           </button>
-        </div>
 
-        {/* Wallet Connection Status */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Connection Status</h4>
-          <div className="text-sm text-gray-600">
-            <p>MetaMask: {metaMask.isConnected ? `${metaMask.address?.slice(0, 6)}...${metaMask.address?.slice(-4)}` : 'Not connected'}</p>
-            <p>VeWorld: {veWorld.isConnected ? `${veWorld.address?.slice(0, 6)}...${veWorld.address?.slice(-4)}` : 'Not connected'}</p>
-            <p>Required for Sepolia: MetaMask</p>
-            <p>Required for VeChain: VeWorld</p>
+          {/* Bridge Status */}
+          {bridgeStatus && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-2">Cross-Chain Status</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Status:</span>
+                  <span className={`font-medium ${
+                    bridgeStatus.status === 'Completed' ? 'text-green-600' : 
+                    bridgeStatus.status === 'Processing' ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {bridgeStatus.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">From:</span>
+                  <span className="font-medium">{bridgeStatus.fromChain}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">To:</span>
+                  <span className="font-medium">{bridgeStatus.toChain}</span>
+                </div>
+                {bridgeStatus.receiveTxHash && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Receive Tx:</span>
+                    <span className="font-medium text-xs truncate max-w-32">
+                      {bridgeStatus.receiveTxHash.slice(0, 6)}...{bridgeStatus.receiveTxHash.slice(-4)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => checkBridgeStatus(bridgeStatus.txHash)}
+                disabled={isCheckingStatus}
+                className="mt-2 text-sm text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+              >
+                {isCheckingStatus ? 'Checking...' : 'Refresh Status'}
+              </button>
+            </div>
+          )}
+
+          {/* Wallet Connection Status */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Connection Status</h4>
+            <div className="text-sm text-gray-600">
+              <p>MetaMask: {metaMask.isConnected ? `${metaMask.address?.slice(0, 6)}...${metaMask.address?.slice(-4)}` : 'Not connected'}</p>
+              <p>VeWorld: {veWorld.isConnected ? `${veWorld.address?.slice(0, 6)}...${veWorld.address?.slice(-4)}` : 'Not connected'}</p>
+              <p>Required for Sepolia: MetaMask</p>
+              <p>Required for VeChain: VeWorld</p>
+            </div>
           </div>
         </div>
       </div>
