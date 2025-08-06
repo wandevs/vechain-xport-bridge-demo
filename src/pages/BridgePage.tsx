@@ -27,8 +27,7 @@ export const BridgePage: React.FC = () => {
   const [contractAddresses, setContractAddresses] = useState({
     erc20TokenHome: '',
     erc20TokenRemote: '',
-    mockERC20: '',
-    wmbGateway: ''
+    mockERC20: ''
   });
   const [balances, setBalances] = useState<TokenBalances>({
     sepolia: '0',
@@ -50,16 +49,20 @@ export const BridgePage: React.FC = () => {
     // If URL parameters exist, use them
     if (erc20TokenHomeFromUrl || erc20TokenRemoteFromUrl || mockERC20FromUrl) {
       setContractAddresses(prev => ({
-        ...prev,
         erc20TokenHome: erc20TokenHomeFromUrl || prev.erc20TokenHome,
         erc20TokenRemote: erc20TokenRemoteFromUrl || prev.erc20TokenRemote,
         mockERC20: mockERC20FromUrl || prev.mockERC20
       }));
     } else {
-      // Fallback to localStorage
+      // Fallback to localStorage - remove wmbGateway field
       const saved = localStorage.getItem('contractAddresses');
       if (saved) {
-        setContractAddresses(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setContractAddresses({
+          erc20TokenHome: parsed.erc20TokenHome || '',
+          erc20TokenRemote: parsed.erc20TokenRemote || '',
+          mockERC20: parsed.mockERC20 || ''
+        });
       }
     }
   }, []);
@@ -75,12 +78,12 @@ export const BridgePage: React.FC = () => {
     }
   }, [activeAddress, contractAddresses, metaMask.isConnected, veWorld.isConnected]);
 
-  // Estimate message fee
+  // Estimate message fee - use default fee since WmbGateway is in contracts
   useEffect(() => {
-    if (contractAddresses.wmbGateway && direction) {
-      estimateMessageFee();
+    if (direction) {
+      setMessageFee('0.01'); // Default fee, can be updated based on actual usage
     }
-  }, [contractAddresses.wmbGateway, direction]);
+  }, [direction]);
 
   const fetchBalances = async () => {
     try {
@@ -102,24 +105,7 @@ export const BridgePage: React.FC = () => {
     }
   };
 
-  const estimateMessageFee = async () => {
-    try {
-      if (!contractAddresses.wmbGateway || !activeSigner) return;
-
-      const wmbGateway = new ethers.Contract(
-        contractAddresses.wmbGateway,
-        ["function estimateFee(uint256 targetChainId, uint256 gasLimit) view returns (uint256)"],
-        activeSigner
-      );
-
-      const targetChainId = direction === 'sepolia-to-vechain' ? VECHAIN_TESTNET_CHAIN_ID : SEPOLIA_CHAIN_ID;
-      const fee = await wmbGateway.estimateFee(targetChainId, 400000);
-      setMessageFee(ethers.formatEther(fee));
-    } catch (error) {
-      console.error('Failed to estimate fee:', error);
-      setMessageFee('0.01'); // Default fallback
-    }
-  };
+  // Removed wmbGateway fee estimation since gateway is already in contracts
 
   const checkApproval = async () => {
     if (!contractAddresses.mockERC20 || !contractAddresses.erc20TokenHome || !activeSigner) return;
@@ -262,18 +248,7 @@ export const BridgePage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              WMB Gateway Address
-            </label>
-            <input
-              type="text"
-              value={contractAddresses.wmbGateway}
-              onChange={(e) => handleAddressChange('wmbGateway', e.target.value)}
-              placeholder="0x..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+
         </div>
 
         {/* Balance Display */}
