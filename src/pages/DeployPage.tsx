@@ -45,7 +45,8 @@ export const DeployPage: React.FC = () => {
     erc20TokenHome: { address: '', isDeployed: false, isDeploying: false },
     erc20TokenRemote: { address: '', isDeployed: false, isDeploying: false },
   });
-  const [wmbGatewayAddress, setWmbGatewayAddress] = useState('');
+  const [wmbGatewayAddressHome, setWmbGatewayAddressHome] = useState('');
+  const [wmbGatewayAddressRemote, setWmbGatewayAddressRemote] = useState('');
   const [tokenName, setTokenName] = useState('CrossChainToken');
   const [tokenSymbol, setTokenSymbol] = useState('CCT');
   const [tokenAmount, setTokenAmount] = useState('1000');
@@ -100,7 +101,7 @@ export const DeployPage: React.FC = () => {
   };
 
   const deployErc20TokenHome = async () => {
-    if (!metaMask.signer || !isMetaMaskConnected || !wmbGatewayAddress || !deployState.mockERC20.address) return;
+    if (!metaMask.signer || !isMetaMaskConnected || !wmbGatewayAddressHome || !deployState.mockERC20.address) return;
 
     setDeployState(prev => ({ ...prev, erc20TokenHome: { ...prev.erc20TokenHome, isDeploying: true } }));
 
@@ -111,7 +112,7 @@ export const DeployPage: React.FC = () => {
         metaMask.signer
       );
 
-      const contract = await factory.deploy(wmbGatewayAddress, deployState.mockERC20.address);
+      const contract = await factory.deploy(wmbGatewayAddressHome, deployState.mockERC20.address);
       await contract.waitForDeployment();
       const address = await contract.getAddress();
 
@@ -126,14 +127,14 @@ export const DeployPage: React.FC = () => {
   };
 
   const deployErc20TokenRemote = async () => {
-    if (!veWorld.signer || !isVeWorldConnected || !wmbGatewayAddress || !deployState.erc20TokenHome.address) return;
+    if (!veWorld.signer || !isVeWorldConnected || !wmbGatewayAddressRemote || !deployState.erc20TokenHome.address) return;
 
     setDeployState(prev => ({ ...prev, erc20TokenRemote: { ...prev.erc20TokenRemote, isDeploying: true } }));
 
     try {
       // Estimate fee for cross-chain message
       const wmbGateway = new ethers.Contract(
-        wmbGatewayAddress,
+        wmbGatewayAddressRemote,
         ["function estimateFee(uint256 targetChainId, uint256 gasLimit) view returns (uint256)"],
         veWorld.signer
       );
@@ -147,7 +148,7 @@ export const DeployPage: React.FC = () => {
       );
 
       const contract = await factory.deploy(
-        wmbGatewayAddress,
+        wmbGatewayAddressRemote,
         deployState.erc20TokenHome.address,
         2147483708, // Use BIP44 chain ID for Sepolia
         tokenName,
@@ -176,18 +177,7 @@ export const DeployPage: React.FC = () => {
       <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Deploy Contracts</h2>
         
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            WMB Gateway Address
-          </label>
-          <input
-            type="text"
-            value={wmbGatewayAddress}
-            onChange={(e) => setWmbGatewayAddress(e.target.value)}
-            placeholder="0x..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
+
 
         {/* MockERC20 Deployment */}
         <div className="mb-8 p-4 border border-gray-200 rounded-lg">
@@ -252,6 +242,19 @@ export const DeployPage: React.FC = () => {
         <div className="mb-8 p-4 border border-gray-200 rounded-lg">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">2. Deploy Erc20TokenHome (Sepolia)</h3>
           
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              WMB Gateway Address (Home)
+            </label>
+            <input
+              type="text"
+              value={wmbGatewayAddressHome}
+              onChange={(e) => setWmbGatewayAddressHome(e.target.value)}
+              placeholder="0x..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          
           {!metaMask.isConnected ? (
             <p className="text-sm text-gray-600 mb-4">Please connect MetaMask wallet on Sepolia network</p>
           ) : !deployState.mockERC20.address ? (
@@ -295,6 +298,19 @@ export const DeployPage: React.FC = () => {
         {/* Erc20TokenRemote Deployment */}
         <div className="mb-8 p-4 border border-gray-200 rounded-lg">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">3. Deploy Erc20TokenRemote (VeChain)</h3>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              WMB Gateway Address (Remote)
+            </label>
+            <input
+              type="text"
+              value={wmbGatewayAddressRemote}
+              onChange={(e) => setWmbGatewayAddressRemote(e.target.value)}
+              placeholder="0x..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
           
           {!veWorld.isConnected ? (
             <p className="text-sm text-gray-600 mb-4">Please connect VeWorld wallet on VeChain Testnet</p>
