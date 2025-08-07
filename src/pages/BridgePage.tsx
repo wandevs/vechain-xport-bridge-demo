@@ -194,19 +194,25 @@ export const BridgePage: React.FC = () => {
             timestamp: status.timestamp
           });
 
-          // Stop polling if status is Completed or Failed
-          if (status.status === 'Completed' || status.status === 'Failed') {
+          // Stop polling if status is Completed, Failed, or Success
+          if (status.status === 'Completed' || status.status === 'Failed' || status.status === 'Success') {
             console.log('Bridge process finished with status:', status.status);
             setIsCheckingStatus(false);
-            return;
+            return; // Exit the poll
           }
+        } else {
+          console.log('No bridge status data found');
         }
       } catch (error) {
-        console.error('Failed to check bridge status:', error);
+        console.error('Error checking bridge status:', error);
+        setIsCheckingStatus(false);
+        return; // Stop polling on error
       }
-      
-      // Continue polling every 5 seconds if not completed
-      setTimeout(pollStatus, 5000);
+
+      // Continue polling every 5 seconds only if still checking
+      if (isCheckingStatus) {
+        setTimeout(pollStatus, 5000);
+      }
     };
     
     // Start polling
