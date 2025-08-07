@@ -36,6 +36,7 @@ export const BridgePage: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [direction, setDirection] = useState<'sepolia-to-vechain' | 'vechain-to-sepolia'>('sepolia-to-vechain');
   const [isBridging, setIsBridging] = useState(false);
+  const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
   const [messageFee, setMessageFee] = useState('0');
   const [isApproved, setIsApproved] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<{
@@ -96,40 +97,73 @@ export const BridgePage: React.FC = () => {
 
   const fetchBalances = async () => {
     try {
+      console.log('Starting balance refresh...');
+      
+      // Always fetch both balances regardless of connection state
+      
       // Sepolia balance (MockERC20)
-      if (contractAddresses.mockERC20 && activeProvider) {
-        const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, activeProvider);
-        const sepoliaBalance = await tokenContract.balanceOf(activeAddress);
-        setBalances(prev => ({ ...prev, sepolia: ethers.formatEther(sepoliaBalance) }));
+      if (contractAddresses.mockERC20) {
+        let sepoliaAddress = '';
+        let sepoliaProvider = null;
+        
+        if (metaMask.isConnected && metaMask.address) {
+          sepoliaAddress = metaMask.address || '';
+          sepoliaProvider = metaMask.signer;
+        } else if (activeProvider && activeAddress) {
+          sepoliaAddress = activeAddress || '';
+          sepoliaProvider = activeProvider;
+        }
+
+        if (sepoliaAddress && sepoliaProvider) {
+          try {
+            const tokenContract = new ethers.Contract(contractAddresses.mockERC20, ERC20_ABI, sepoliaProvider);
+            const sepoliaBalance = await tokenContract.balanceOf(sepoliaAddress);
+            setBalances(prev => ({ ...prev, sepolia: ethers.formatEther(sepoliaBalance) }));
+            console.log('Sepolia balance fetched for', sepoliaAddress, ':', ethers.formatEther(sepoliaBalance));
+          } catch (sepoliaError) {
+            console.error('Failed to fetch Sepolia balance:', sepoliaError);
+            setBalances(prev => ({ ...prev, sepolia: '0' }));
+          }
+        } else {
+          console.log('Sepolia not connected or address not available');
+          setBalances(prev => ({ ...prev, sepolia: '0' }));
+        }
       }
 
-      // VeChain balance (Erc20TokenRemote) - Use VeChain RPC
-      if (contractAddresses.erc20TokenRemote && veWorld.signer) {
-        try {
-          // Create provider for VeChain testnet
-          const vechainProvider = new ethers.JsonRpcProvider('https://testnet.rpc.vechain.org');
-          const remoteContract = new ethers.Contract(
-            contractAddresses.erc20TokenRemote, 
-            ERC20_TOKEN_REMOTE_ABI, 
-            vechainProvider
-          );
-          const vechainBalance = await remoteContract.balanceOf(activeAddress);
-          setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
-          console.log('VeChain balance fetched:', ethers.formatEther(vechainBalance));
-        } catch (vechainError) {
-          console.error('Failed to fetch VeChain balance via RPC:', vechainError);
-          // Fallback to veWorld signer if RPC fails
-          if (contractAddresses.erc20TokenRemote && veWorld.signer) {
+      // VeChain balance (Erc20TokenRemote)
+      if (contractAddresses.erc20TokenRemote) {
+        let vechainAddress = '';
+        let vechainProvider = null;
+        
+        if (veWorld.isConnected && veWorld.address) {
+          vechainAddress = veWorld.address || '';
+          vechainProvider = new ethers.JsonRpcProvider('https://testnet.rpc.vechain.org');
+        } else if (veWorld.signer && veWorld.address) {
+          vechainAddress = veWorld.address || '';
+          vechainProvider = veWorld.signer;
+        }
+
+        if (vechainAddress && vechainProvider) {
+          try {
             const remoteContract = new ethers.Contract(
               contractAddresses.erc20TokenRemote, 
               ERC20_TOKEN_REMOTE_ABI, 
-              veWorld.signer
+              vechainProvider
             );
-            const vechainBalance = await remoteContract.balanceOf(activeAddress);
+            const vechainBalance = await remoteContract.balanceOf(vechainAddress);
             setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
+            console.log('VeChain balance fetched for', vechainAddress, ':', ethers.formatEther(vechainBalance));
+          } catch (vechainError) {
+            console.error('Failed to fetch VeChain balance:', vechainError);
+            setBalances(prev => ({ ...prev, vechain: '0' }));
           }
+        } else {
+          console.log('VeChain not connected or address not available');
+          setBalances(prev => ({ ...prev, vechain: '0' }));
         }
       }
+      
+      console.log('Balance refresh completed');
     } catch (error) {
       console.error('Failed to fetch balances:', error);
     }
@@ -375,11 +409,22 @@ export const BridgePage: React.FC = () => {
         {/* Refresh Balances Button */}
         <div className="mb-4">
           <button
-            onClick={fetchBalances}
-            className="w-full flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            onClick={async () => {
+              setIsRefreshingBalances(true);
+              try {
+                await fetchBalances();
+                console.log('Balances refreshed successfully');
+              } catch (error) {
+                console.error('Error refreshing balances:', error);
+              } finally {
+                setIsRefreshingBalances(false);
+              }
+            }}
+            disabled={isRefreshingBalances}
+            className="w-full flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200"
           >
-            <ArrowPathIcon className="w-5 h-5 mr-2" />
-            Refresh Balances
+            <ArrowPathIcon className={`w-5 h-5 mr-2 ${isRefreshingBalances ? 'animate-spin' : ''}`} />
+            {isRefreshingBalances ? 'Refreshing...' : 'Refresh Balances'}
           </button>
         </div>
 
