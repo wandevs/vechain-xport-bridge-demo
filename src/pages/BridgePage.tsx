@@ -103,11 +103,32 @@ export const BridgePage: React.FC = () => {
         setBalances(prev => ({ ...prev, sepolia: ethers.formatEther(sepoliaBalance) }));
       }
 
-      // VeChain balance (Erc20TokenRemote)
-      if (contractAddresses.erc20TokenRemote && activeProvider) {
-        const remoteContract = new ethers.Contract(contractAddresses.erc20TokenRemote, ERC20_TOKEN_REMOTE_ABI, activeProvider);
-        const vechainBalance = await remoteContract.balanceOf(activeAddress);
-        setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
+      // VeChain balance (Erc20TokenRemote) - Use VeChain RPC
+      if (contractAddresses.erc20TokenRemote && veWorld.signer) {
+        try {
+          // Create provider for VeChain testnet
+          const vechainProvider = new ethers.JsonRpcProvider('https://testnet.rpc.vechain.org');
+          const remoteContract = new ethers.Contract(
+            contractAddresses.erc20TokenRemote, 
+            ERC20_TOKEN_REMOTE_ABI, 
+            vechainProvider
+          );
+          const vechainBalance = await remoteContract.balanceOf(activeAddress);
+          setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
+          console.log('VeChain balance fetched:', ethers.formatEther(vechainBalance));
+        } catch (vechainError) {
+          console.error('Failed to fetch VeChain balance via RPC:', vechainError);
+          // Fallback to veWorld signer if RPC fails
+          if (contractAddresses.erc20TokenRemote && veWorld.signer) {
+            const remoteContract = new ethers.Contract(
+              contractAddresses.erc20TokenRemote, 
+              ERC20_TOKEN_REMOTE_ABI, 
+              veWorld.signer
+            );
+            const vechainBalance = await remoteContract.balanceOf(activeAddress);
+            setBalances(prev => ({ ...prev, vechain: ethers.formatEther(vechainBalance) }));
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch balances:', error);
@@ -117,27 +138,45 @@ export const BridgePage: React.FC = () => {
   // Removed wmbGateway fee estimation since gateway is already in contracts
 
   const checkBridgeStatus = async (txHash: string) => {
+    console.log('Starting bridge status check for tx:', txHash);
     setIsCheckingStatus(true);
-    try {
-      const response = await fetch(`https://bridge-api.wanchain.org/api/testnet/status/msg/${txHash}`);
-      const data = await response.json();
-      
-      if (data && data.length > 0) {
-        const status = data[0];
-        setBridgeStatus({
-          txHash: status.sendTxHash,
-          status: status.status,
-          fromChain: status.fromChain,
-          toChain: status.toChain,
-          receiveTxHash: status.receiveTxHash,
-          timestamp: status.timestamp
-        });
+    
+    const pollStatus = async () => {
+      try {
+        console.log('Polling bridge status...');
+        const response = await fetch(`https://bridge-api.wanchain.org/api/testnet/status/msg/${txHash}`);
+        const data = await response.json();
+        
+        if (data && data.length > 0) {
+          const status = data[0];
+          console.log('Bridge status received:', status);
+          
+          setBridgeStatus({
+            txHash: status.sendTxHash,
+            status: status.status,
+            fromChain: status.fromChain,
+            toChain: status.toChain,
+            receiveTxHash: status.receiveTxHash,
+            timestamp: status.timestamp
+          });
+
+          // Stop polling if status is Completed or Failed
+          if (status.status === 'Completed' || status.status === 'Failed') {
+            console.log('Bridge process finished with status:', status.status);
+            setIsCheckingStatus(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check bridge status:', error);
       }
-    } catch (error) {
-      console.error('Failed to check bridge status:', error);
-    } finally {
-      setIsCheckingStatus(false);
-    }
+      
+      // Continue polling every 5 seconds if not completed
+      setTimeout(pollStatus, 5000);
+    };
+    
+    // Start polling
+    pollStatus();
   };
 
   const checkApproval = async () => {
@@ -194,6 +233,8 @@ export const BridgePage: React.FC = () => {
         const tx = await tokenHome.crossTo(metaMask.address, amountWei, { value: feeWei });
         await tx.wait();
         alert('Successfully bridged tokens to VeChain!');
+        console.log('Bridge transaction initiated:', tx.hash);
+        checkBridgeStatus(tx.hash);
       } else {
         // From VeChain to Sepolia
         if (!veWorld.isConnected) {
@@ -207,8 +248,23 @@ export const BridgePage: React.FC = () => {
           veWorld.signer
         );
 
-        const tx = await tokenRemote.crossBack(veWorld.address, amountWei, { value: feeWei });
-        await tx.wait();
+        // Encode the function call for VeChain transaction
+        const data = tokenRemote.interface.encodeFunctionData('crossBack', [
+          veWorld.address,
+          amountWei
+        ]);
+
+        // Send VeChain transaction with clauses format
+        const tx = await veWorld.signer.sendTransaction({
+          clauses: [{
+            to: contractAddresses.erc20TokenRemote,
+            value: feeWei.toString(),
+            data: data
+          }]
+        });
+        
+        console.log('VeChain bridge transaction initiated:', tx);
+        checkBridgeStatus(tx);
         alert('Successfully bridged tokens to Sepolia!');
       }
 
@@ -314,6 +370,17 @@ export const BridgePage: React.FC = () => {
               <p className="text-sm text-gray-500">Destination</p>
             </div>
           </div>
+        </div>
+
+        {/* Refresh Balances Button */}
+        <div className="mb-4">
+          <button
+            onClick={fetchBalances}
+            className="w-full flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+          >
+            <ArrowPathIcon className="w-5 h-5 mr-2" />
+            Refresh Balances
+          </button>
         </div>
 
         {/* Bridge Form */}
