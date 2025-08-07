@@ -142,6 +142,23 @@ sample-react-app/
 - Safari
 - Edge
 
+## 🎥 UI Tutorial Video
+
+For a complete visual walkthrough of the application, watch our UI tutorial video:
+
+### 📹 [UI Tutorial Video](./UI.mp4)
+
+**What you'll learn in the video:**
+- How to connect MetaMask and VeWorld wallets
+- Step-by-step bridge transaction process
+- Real-time balance monitoring
+
+### Quick Video Navigation
+- **0:00-2:00** - Wallet Connection Setup
+- **2:00-5:00** - Contract Address Configuration
+- **5:00-8:00** - Bridge Transaction Demo
+- **8:00-10:00** - Balance Monitoring & Status Tracking
+
 ## 🤝 Contributing
 1. Fork the repository
 2. Create a feature branch
@@ -150,3 +167,4 @@ sample-react-app/
 
 ## 📄 License
 MIT License - see LICENSE file for details
+
