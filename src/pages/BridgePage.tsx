@@ -37,6 +37,7 @@ export const BridgePage: React.FC = () => {
   const [direction, setDirection] = useState<'sepolia-to-vechain' | 'vechain-to-sepolia'>('sepolia-to-vechain');
   const [isBridging, setIsBridging] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [messageFee, setMessageFee] = useState('0');
   const [isApproved, setIsApproved] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<{
@@ -194,25 +195,29 @@ export const BridgePage: React.FC = () => {
             timestamp: status.timestamp
           });
 
-          // Stop polling if status is Completed, Failed, or Success
+          // Check actual status value and log it
+          console.log('Current bridge status value:', status.status);
+          
+          // Stop polling for final states: Completed, Failed, or Success
           if (status.status === 'Completed' || status.status === 'Failed' || status.status === 'Success') {
-            console.log('Bridge process finished with status:', status.status);
+            console.log('Bridge process finished with status:', status.status, 'Stopping poll...');
             setIsCheckingStatus(false);
+            setIsBridging(false); // Stop the bridge button spinning
             return; // Exit the poll
+          } else {
+            console.log('Bridge status is:', status.status, 'Continuing poll...');
           }
         } else {
-          console.log('No bridge status data found');
+          console.log('No bridge status data found, continuing poll...');
         }
       } catch (error) {
         console.error('Error checking bridge status:', error);
-        setIsCheckingStatus(false);
-        return; // Stop polling on error
+        // Don't stop polling on network errors, just log and continue
+        console.log('Continuing poll despite error...');
       }
 
-      // Continue polling every 5 seconds only if still checking
-      if (isCheckingStatus) {
-        setTimeout(pollStatus, 5000);
-      }
+      // Always continue polling unless explicitly stopped by final status
+      setTimeout(pollStatus, 5000);
     };
     
     // Start polling
@@ -271,10 +276,8 @@ export const BridgePage: React.FC = () => {
         );
 
         const tx = await tokenHome.crossTo(metaMask.address, amountWei, { value: feeWei });
-        await tx.wait();
-        alert('Successfully bridged tokens to VeChain!');
-        console.log('Bridge transaction initiated:', tx.hash);
         checkBridgeStatus(tx.hash);
+        console.log('Bridge transaction initiated:', tx.hash);
       } else {
         // From VeChain to Sepolia
         if (!veWorld.isConnected) {
@@ -305,7 +308,7 @@ export const BridgePage: React.FC = () => {
         
         console.log('VeChain bridge transaction initiated:', tx);
         checkBridgeStatus(tx);
-        alert('Successfully bridged tokens to Sepolia!');
+        // Don't show alert, let the status polling handle UI updates
       }
 
       // Refresh balances
@@ -313,9 +316,8 @@ export const BridgePage: React.FC = () => {
       setAmount('');
     } catch (error) {
       console.error('Failed to bridge tokens:', error);
-      alert('Failed to bridge tokens');
-    } finally {
-      setIsBridging(false);
+      // Don't set isBridging to false here, let checkBridgeStatus handle it
+      // setIsBridging(false) will be called when status reaches final state
     }
   };
 
@@ -465,11 +467,21 @@ export const BridgePage: React.FC = () => {
 
           {direction === 'sepolia-to-vechain' && !isApproved && (
             <button
-              onClick={approveTokens}
-              disabled={!amount || isBridging}
-              className="w-full bg-yellow-600 text-white py-2 px-4 rounded-md hover:bg-yellow-700 disabled:opacity-50"
+              onClick={async () => {
+                setIsApproving(true);
+                try {
+                  await approveTokens();
+                } catch (error) {
+                  console.error('Error approving tokens:', error);
+                } finally {
+                  setIsApproving(false);
+                }
+              }}
+              disabled={!amount || isBridging || isApproving}
+              className="w-full flex items-center justify-center px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-yellow-400 disabled:cursor-not-allowed transition-all duration-200"
             >
-              Approve Tokens
+              <ArrowPathIcon className={`w-5 h-5 mr-2 ${isApproving ? 'animate-spin' : ''}`} />
+              {isApproving ? 'Approving...' : 'Approve Tokens'}
             </button>
           )}
 
