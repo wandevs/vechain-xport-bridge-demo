@@ -318,6 +318,7 @@ export const BridgePage: React.FC = () => {
       console.error('Failed to bridge tokens:', error);
       // Don't set isBridging to false here, let checkBridgeStatus handle it
       // setIsBridging(false) will be called when status reaches final state
+      alert('Failed to bridge tokens: ' + error);
     } finally {
       setIsBridging(false);
     }
