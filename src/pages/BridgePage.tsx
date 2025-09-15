@@ -49,6 +49,7 @@ export const BridgePage: React.FC = () => {
     timestamp: number;
   } | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [toAddress, setToAddress] = useState('');
 
   // Load addresses from URL parameters or localStorage
   useEffect(() => {
@@ -95,6 +96,25 @@ export const BridgePage: React.FC = () => {
       setMessageFee('0.01'); // Default fee, can be updated based on actual usage
     }
   }, [direction]);
+
+  // Auto-fill toAddress based on target chain and connected wallets
+  useEffect(() => {
+    if (direction === 'sepolia-to-vechain') {
+      // Target chain is VeChain, use VeWorld address
+      if (veWorld.isConnected && veWorld.address) {
+        setToAddress(veWorld.address);
+      } else {
+        setToAddress(''); // Clear if not connected
+      }
+    } else {
+      // Target chain is Sepolia (EVM), use MetaMask address
+      if (metaMask.isConnected && metaMask.address) {
+        setToAddress(metaMask.address);
+      } else {
+        setToAddress(''); // Clear if not connected
+      }
+    }
+  }, [direction, veWorld.isConnected, veWorld.address, metaMask.isConnected, metaMask.address]);
 
   const fetchBalances = async () => {
     try {
@@ -254,7 +274,13 @@ export const BridgePage: React.FC = () => {
   };
 
   const bridgeTokens = async () => {
-    if (!amount || !activeSigner || !activeAddress) return;
+    if (!amount || !activeSigner || !activeAddress || !toAddress) return;
+
+    // Validate toAddress format
+    if (!ethers.isAddress(toAddress)) {
+      alert('Please enter a valid destination address');
+      return;
+    }
 
     setIsBridging(true);
 
@@ -275,7 +301,7 @@ export const BridgePage: React.FC = () => {
           metaMask.signer
         );
 
-        const tx = await tokenHome.crossTo(metaMask.address, amountWei, { value: feeWei });
+        const tx = await tokenHome.crossTo(toAddress, amountWei, { value: feeWei });
         checkBridgeStatus(tx.hash);
         console.log('Bridge transaction initiated:', tx.hash);
       } else {
@@ -293,7 +319,7 @@ export const BridgePage: React.FC = () => {
 
         // Encode the function call for VeChain transaction
         const data = tokenRemote.interface.encodeFunctionData('crossBack', [
-          veWorld.address,
+          toAddress,
           amountWei
         ]);
 
@@ -457,6 +483,22 @@ export const BridgePage: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Destination Address (To)
+            </label>
+            <input
+              type="text"
+              value={toAddress}
+              onChange={(e) => setToAddress(e.target.value)}
+              placeholder={`Enter ${direction === 'sepolia-to-vechain' ? 'VeChain' : 'Sepolia'} address`}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Default: {direction === 'sepolia-to-vechain' ? 'VeWorld' : 'MetaMask'} connected address
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Message Fee (will be refunded if overpaid)
             </label>
             <input
@@ -490,7 +532,7 @@ export const BridgePage: React.FC = () => {
 
           <button
             onClick={bridgeTokens}
-            disabled={!amount || isBridging || 
+            disabled={!amount || !toAddress || isBridging || 
               (direction === 'sepolia-to-vechain' && !metaMask.isConnected) ||
               (direction === 'vechain-to-sepolia' && !veWorld.isConnected) ||
               (direction === 'sepolia-to-vechain' && !isApproved)
